@@ -27,6 +27,7 @@ T = {
   "get_policy": "خد وثيقتك دلوقتي", "back": "رجوع", "next": "كمل", "compare": "قارن الأسعار",
   "car_brand": "ماركة العربية", "car_model": "الموديل", "car_year": "سنة الصنع", "car_value": "قيمة العربية (جنيه)",
   "car_new": "العربية جديدة ولا مستعملة؟", "new": "جديدة", "used": "مستعملة",
+  "car_fuel": "عربيتك كهربا ولا بنزين؟", "electric": "كهربا", "fuel": "بنزين", "hybrid": "هايبرد (كهربا + بنزين)",
   "name": "اسمك", "phone": "رقم التليفون", "nid": "الرقم القومي", "plate": "رقم اللوحة (اختياري)",
   "your_quote": "عرض السعر بتاعك", "provider": "شركة التأمين", "premium": "القسط السنوي", "deduct": "التحمل",
   "choose": "اختار الوثيقة دي", "chosen": "تم اختيار الوثيقة: {p}", "pay": "طريقة الدفع",
@@ -54,6 +55,7 @@ T = {
   "get_policy": "Get your policy now", "back": "Back", "next": "Continue", "compare": "Compare prices",
   "car_brand": "Car brand", "car_model": "Model", "car_year": "Year", "car_value": "Car value (EGP)",
   "car_new": "Is the car new or used?", "new": "New", "used": "Used",
+  "car_fuel": "Is your car electric or fuel?", "electric": "Electric", "fuel": "Fuel", "hybrid": "Hybrid (Electric + Fuel)",
   "name": "Your name", "phone": "Phone number", "nid": "National ID", "plate": "Plate number (optional)",
   "your_quote": "Your quote", "provider": "Insurance company", "premium": "Yearly premium", "deduct": "Deductible",
   "choose": "Choose this policy", "chosen": "Policy chosen: {p}", "pay": "Payment method",
@@ -151,6 +153,7 @@ def page_motor_detail():
         year = r2[0].number_input(t("car_year"), min_value=2000, max_value=2027, value=2023, step=1)
         value = r2[1].number_input(t("car_value"), min_value=50000, max_value=10000000, value=800000, step=10000)
         cond = st.radio(t("car_new"), [t("new"), t("used")], horizontal=True)
+        fuel = st.radio(t("car_fuel"), [t("electric"), t("fuel"), t("hybrid")], horizontal=True)
         r3 = st.columns(2)
         name = r3[0].text_input(t("name")); phone = r3[1].text_input(t("phone"))
         r4 = st.columns(2)
@@ -160,13 +163,13 @@ def page_motor_detail():
                 st.error("—")
             else:
                 st.session_state.quote = {"type": "motor", "name": name, "phone": phone, "nid": nid, "plate": plate,
-                                          "car": f"{brand} {model} {year}", "value": float(value), "cond": cond, "date": str(date.today())}
+                                          "car": f"{brand} {model} {year}", "value": float(value), "cond": cond, "fuel": fuel, "date": str(date.today())}
                 st.session_state.step = "compare"; st.rerun()
 
 # ── صفحة المقارنة - زي Amenli Compare ──
 def page_compare():
     q = st.session_state.quote
-    st.markdown(f'<div class="hero"><h1>{t("your_quote")}</h1><p>{q["car"]} - {q["value"]:,.0f}</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="hero"><h1>{t("your_quote")}</h1><p>{q["car"]} - {q["value"]:,.0f} - {q.get("fuel","")}</p></div>', unsafe_allow_html=True)
     if st.button(t("back")):
         st.session_state.step = "detail"; st.rerun()
     st.caption(f"{q['name']} · {q['phone']}")
@@ -174,6 +177,9 @@ def page_compare():
         prem = round(q["value"] * p["rate"])
         # خصم لو العربية جديدة
         if q["cond"] == t("new"): prem = round(prem * 0.95)
+        # تعديل حسب نوع الوقود: كهربا أغلى 10% (بطارية)، هايبرد أغلى 5%
+        if q.get("fuel") == t("electric"): prem = round(prem * 1.10)
+        elif q.get("fuel") == t("hybrid"): prem = round(prem * 1.05)
         with st.container():
             st.markdown(f'<div class="card"><h3>{p["name"]}</h3><p>{p["note"]} · {t("deduct")}: {p["deduct"]}</p><h2 style="color:{TEAL}">{prem:,.0f} جنيه / سنة</h2><p>✓ {t("cov1")} · ✓ {t("cov4")} · ✓ {t("cov5")}</p></div>', unsafe_allow_html=True)
             if st.button(f"{t('choose')} - {p['name']}", key=f"ch_{p['name']}"):
@@ -184,7 +190,7 @@ def page_compare():
 # ── صفحة الاختيار والدفع ──
 def page_checkout():
     q = st.session_state.quote
-    st.markdown(f'<div class="hero"><h1>{t("chosen").format(p=q["provider"])}</h1><p>{q["car"]} - {q["premium"]:,.0f}</p></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="hero"><h1>{t("chosen").format(p=q["provider"])}</h1><p>{q["car"]} - {q.get("fuel","")} - {q["premium"]:,.0f}</p></div>', unsafe_allow_html=True)
     pay = st.radio(t("pay"), [t("pay_full"), t("pay_half"), t("pay_month")])
     if pay == t("pay_half"): total = q["premium"]
     elif pay == t("pay_month"): total = round(q["premium"] / 12)
@@ -194,7 +200,7 @@ def page_checkout():
         st.session_state.step = "compare"; st.rerun()
     if st.button(t("confirm")):
         ref = f"Q-{len(st.session_state.quotes)+1:04d}"
-        row = {"ref": ref, "type": q["type"], "name": q["name"], "phone": q["phone"], "nid": q["nid"],
+        row = {"ref": ref, "type": q["type"], "name": q["name"], "phone": q["phone"], "nid": q["nid"], "fuel": q.get("fuel",""),
                "car": q["car"], "value": q["value"], "provider": q["provider"], "premium": q["premium"],
                "pay": pay, "status": "new", "date": q["date"]}
         st.session_state.quotes = pd.concat([st.session_state.quotes, pd.DataFrame([row])], ignore_index=True)
